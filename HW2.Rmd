@@ -1,0 +1,272 @@
+---
+title: "Homework 2"
+Students: "Murad Ektilat 206064230, Noam Wolf 326881240"
+date: "11/27/2021"
+output: html_document
+---
+
+- Load packages and set working directory
+```{r}
+library(DESeq2)
+install.packages("ashr")
+library(ashr)
+library(EnhancedVolcano)
+library(factoextra)
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("clusterProfiler")
+
+
+library(clusterProfiler)
+```
+```{r}
+install.packages("msigdbr")
+library(msigdbr)
+
+setwd('C:/Users/murad/Desktop/courses/22_A_winter/Bioinfornatics/hw2')
+```
+
+- Take a moment to look up the terms below on the internet and write a brief definition for each of them (1 line max):
+```{}
+Colorectal cancer -
+The development of cancer from the colon or rectum (parts of the large intestine).
+Primary tumor - 
+The tumor in the site where progression began and proceeded to yield a cancerous mass.
+Liver metastasis - 
+A cancerous tumor that has spread to the liver from a cancer that started in another organ. 
+```
+
+In this homework, we will analyze RNA-seq data of gene expression from colorectal cancer patients:
+https://doi.org/10.1016/j.molonc.2014.06.016
+
+- Take a look at the manuscript, find the GEO accession number of the dataset used (look at “RNA-seq data processing” in the methods section). 
+- Write it down here:
+```{}
+GEO accession number: GSE50760
+```
+
+- Go in to the GEO website and search for this accession number. Take a look at the available data to download. 
+- What is the problem with this data? why can’t we use it for DE analysis?
+- Write your answer here:
+```{}
+The problem with the data is that its already normalized (FPKM normalization for size and gene length) per each sample in a way that changes the overall comparison between the different samples. for DE analysis we would like to start with a raw data.
+```
+
+- In recent years, many repositories performed reanalysis of raw data that can allow us to download counts data. One way is by using the European alternative of GEO: https://www.ebi.ac.uk/arrayexpress/ 
+- Search the accession number in this website. You will see a link for “Atlas”. Click on it and go in to the “Downloads” tab and download the “All raw counts for the experiment” and the “Experiment design” files.
+
+- Run this to load the count matrix and metadata
+```{r}
+counts <- read.table("E-GEOD-50760-raw-counts.tsv",sep='\t', header=T)
+genes.symbols <- counts[,2] # We will keep the genes symbols in this vector
+counts <- counts[,-2] # Remove gene symbols from the count matrix
+metadata <- read.table("E-GEOD-50760-experiment-design.tsv", sep='\t', header=T)
+```
+
+- Take a look at the metadata:
+```{r}
+View(metadata)
+```
+
+- Take only the first two columns of the metadata and use the column "Run" as row names
+```{r}
+metadata <- data.frame(metadata[1], metadata[2])
+rownames(metadata) <- metadata[,1]
+```
+
+- Make few more modification to "metadata":
+(1) Rename the second column "tissue"
+(2) In the same column, change "primary tumor" to "primary" and "colorectal cancer metastatic in the liver" to "metastatic" (just for simplicity)
+* TIP: use the mapvalues() function from the "plyr" package
+(3) Finally, change the column data type to factor
+```{r}
+colnames(metadata)[2] <- "tissue"
+metadata$tissue <- plyr::mapvalues(metadata$tissue, "primary tumor", "primary")
+
+metadata$tissue <- plyr::mapvalues(metadata$tissue, "colorectal cancer metastatic in the liver", "metastatic")
+
+metadata$tissue <- as.factor(metadata$tissue)
+```
+
+- Make sure the row names in "metadata" match the column names in "counts" and if not, reorder the "metadata" so it will be in the same order.
+```{r}
+all(colnames(counts)[-1] == rownames(metadata))
+target_order <- c(colnames(counts))
+target_order <- target_order[-1]
+metadata <- metadata[match(target_order, rownames(metadata)),]
+all(colnames(counts)[-1] == rownames(metadata))
+```
+
+- Make a DESeq2 object inside "dds", use the tissue column for the design
+```{r}
+dds <- DESeqDataSetFromMatrix(countData=counts, colData=metadata, design= ~tissue ,tidy=TRUE)
+```
+
+- Run DESeq2
+```{r}
+dds <- DESeq(dds)
+```
+
+**We will now analyze the results from primary tumor vs. normal tissue**
+
+- Improve the fold change estimates, we want to shrink the log2 fold changes using the lfcShrink() function:
+(1) Use the "contrast" argument to modify only the results of primary vs. normal tissue
+(2) Set the "type" argument to "ashr"
+(3) Save the results into "resLFC.primary.normal"
+```{r}
+resultsNames(dds)
+resLFC.primary.normal <- lfcShrink(dds, contrast = c("tissue", "primary", "normal"), type = "ashr")
+plotMA(resLFC.primary.normal) #ploted out of curiosity
+```
+
+- Make another column named "symbol" in "resLFC.primary.normal" with the "genes.symbols" vector (the one we made when loading the data)
+```{r}
+
+resLFC.primary.normal$symbol <- genes.symbols
+
+```
+
+- Sort the results by the "pvalue" column (smallest first) and keep it inside "resOrdered.primary.normal"
+```{r}
+resOrdered.primary.normal <- resLFC.primary.normal[order(resLFC.primary.normal$pvalue),]
+```
+
+- Plot the results in "resOrdered.primary.normal" with the EnhancedVolcano() function
+- Use the arguments: FCcutoff=2, pCutoff = 10e-10 and xlim = c(-10, 10)
+```{r}
+EnhancedVolcano(resOrdered.primary.normal,
+                lab = resOrdered.primary.normal$symbol,
+                x = 'log2FoldChange',
+                y = 'padj',
+                labSize=3,
+                FCcutoff=2,
+                pCutoff = 10e-10, 
+                xlim = c(-10, 10))
+```
+
+- Look at the volcano plot and and explain in short the meaning of each axis:
+```{}
+log2FoldChange (x-axis) - normalized diffrentiation (/change) of genes-expression between the primary and normal groups. The data is reported in log base, which make it symetric no matter which way you compare. eg- a fold change value of 1 is double or half, 2 quadruple or a quater and so forth.
+
+padj (y-axis) - Benjamini-Hochberg adjusted p-value which takes into account the order of the p-value to avoid (or minimize) type 1 errors (False Positives).
+```
+
+"CEMIP" is the 3rd most significant and highly expressed gene in our results.
+- Google "CEMIP" and look for diseases that are associated with high expression of this gene.
+- Write down one disease that you found and copy a link to the source of your finding
+```{}
+High CEMIP expression is related to several diseases, such as breast cancer, colon cancer etc.
+sources for the genes role in breast cancer: https://www.sciencedirect.com/science/article/pii/S0753332219353508
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6611512/
+```
+
+- Use the "plotCounts()" function to plot the expression of CEMIP in each group (normal/primary/metastatic)
+```{r}
+i <- which(resOrdered.primary.normal$symbol=='CEMIP')
+resOrdered.primary.normal[i,]
+plotCounts(dds, gene=rownames(resOrdered.primary.normal)[i], intgroup="tissue")
+```
+
+- Run the following code to extract the normalize count matrix in log2 form and with stabilized variance (this is the recommended way to do this)
+```{r}
+dds.norm <- vst(dds, blind=T)
+rownames(dds.norm) <- genes.symbols
+```
+
+- Use plotPCA() to run PCA on "dds.norm":
+(1) Use the top 1,000 variable genes
+(2) Color the sample by "tissue"
+```{r}
+plotPCA(dds.norm ,ntop=1000,intgroup="tissue")
+
+```
+
+- Look at the PCA plot, describe in short what you see.
+- In your description mention PC1, PC2, the variance in those axis, clusters and samples that seems out of place.
+```{}
+pc1 and pc2 are the two dimensions on which our data samples, when projected onto them have the greatest variance. with greater variance being assigned greater importance. pc1 is the dimension with the greatest variance, and pc2 the dimension with the second greatest variance. these are then used as axes in the pca graph, with the distance of each sample from said dimensions used as values.
+by the results of the pca, you can see that most of the samples are clustered together according to their type, with one normal sample out of place in the metastatic sample cluster, and signifcant overlap of normal and primary tissue samples.
+```
+
+- Which is more similar to normal tissue (primary tumor/metastasis)?
+```{}
+primary
+```
+
+- Based on the PCA results, what is the first thing you would consider when reanalyzing the data?
+```{}
+since the PCA result has shown a big overlap between the normal and primary cancer cells, we would consider analyzing gene differences between normal and *metastatic* cells rather than normal vs primary, and perhaps taking into account the outlier normal sample.
+
+```
+
+- Run VST, extract the counts data and to change sample names for clustering
+```{r}
+normcounts <- assay(vst(dds, blind=T))
+colnames(normcounts) <- paste0(metadata$tissue, seq(1, length(metadata$tissue)))
+```
+
+- Write a short script that preform hierarchical or kmeans clustering (choose one):
+(1) Use the data from "normcounts"
+(2) Use only top 1,000 variable genes
+(3) Calculate distance matrix if necessary
+(4) Use the Elbow method to decide the optimal number of clusters
+(5) Plot the results in a dendogram for the hierarchical clustering or use fviz_cluster() for kmeans
+
+```{r}
+var_per_gene <- apply(normcounts, 1, var)
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = T)][1:1000])
+normcounts_top1Kvar <- t(normcounts[selectedGenes,])
+dist_mat <- dist(normcounts_top1Kvar, method = 'euclidean')
+
+fviz_nbclust(normcounts_top1Kvar, FUN = hcut, method = "wss")
+hclust_avg <- hclust(dist_mat, method = 'average')
+plot(hclust_avg, cex = 0.6, hang = -1)
+plot(hclust_avg, cex = 0.6, hang = -1)
+rect.hclust(hclust_avg, k = 2, border = 2:8)
+
+```
+
+- Now lets try to understand the meaning of those differentially expressed genes.
+- We will use functional enrichment analysis with the Hallmark pathways gene sets.
+- We learned two ways to perform functional enrichment analysis - over representation and gene set enrichment analysis (GSEA).Here we will run GSEA.  
+
+- First we need to create an ordered vector by the log fold change with the gene symbols as row names:
+```{r}
+DE_genes_entrez_rank <- resOrdered.primary.normal[!is.na(resOrdered.primary.normal$padj),]
+DE_genes_list <- DE_genes_entrez_rank$log2FoldChange
+names(DE_genes_list) <- DE_genes_entrez_rank$symbol
+DE_genes_list <- sort(DE_genes_list, decreasing = T)
+```
+
+- We now need to get the Hallmarks pathways gene sets. We will use the msigdbr package for that:
+```{r}
+hallmarks <- msigdbr(species = "Homo sapiens", category = "H") %>% dplyr::select(gs_name, gene_symbol)
+```
+
+- Use the GSEA() function from the clusterProfiler package to run the analysis.
+- You can find an awesome tutorial for the clusterProfiler package here: http://yulab-smu.top/biomedical-knowledge-mining-book/universal-api.html
+- Save your results into "hm"
+```{r}
+hm <- GSEA(DE_genes_list , TERM2GENE=hallmarks)
+
+```
+
+- Finally, visualize the results of this analysis using the dotPlot function from the clusterProfiler database.
+```{r}
+hallmarks <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks <- hallmarks[,c('gs_name', 'gene_symbol')]
+dotplot(hm)
+```
+
+Final question: look at the top enriched pathways
+- Does that make sense for enriched pathways of cancer vs. normal?
+- Search the top pathway on Google. what are MYC targets?
+- Write your answer here
+```
+It makes sence that the theres a high GeneRatio and low p-value between: genes with high varience between cancer and normal cells and enriched pathways such as MYC and other gene familys known to be associated with human cancer.
+
+The Myc oncoprotein is a transcription factor involved in a variety of human cancers.
+overexpression of Myc is associated with malignant transformation.
+```
+

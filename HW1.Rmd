@@ -1,0 +1,265 @@
+---
+title: "Homework 1"
+author: "Almog Angel"
+date: "11/9/2021"
+output: html_document
+---
+
+- Load packages
+```{r}
+library(ggplot2, quietly = T)
+library(Biostrings, quietly = T)
+library(msa, quietly = T)
+library(msaR, quietly = T)
+```
+
+- Set your working directory and
+- Read "owid-covid-data.csv" from https://github.com/owid/covid-19-data/raw/master/public/data/owid-covid-data.csv into a variable called "covid_world_data"
+```{r}
+# ToDo: Write your code here
+setwd("C:/Users/murad/Desktop/courses/22_A_winter/Bioinfornatics/hw1")
+covid_world_data <- read.csv("https://github.com/owid/covid-19-data/raw/master/public/data/owid-covid-data.csv")
+```
+
+- Take a look at the dataset
+```{r}
+View(covid_world_data)
+```
+
+
+## Task 1 - Discribtive Statistics
+
+- Make a second dataframe and call it "covid_deaths":
+- (1) Take only the following features (columns): "location", "continent", "total_deaths" and "population"
+- (2) And only rows with "date" equal to "2021-11-01"
+```{r}
+# ToDo: Write your code here
+col_names <- c("location", "continent", "total_deaths", "population")
+covid_deaths <- covid_world_data[covid_world_data$date == "2021-11-01", col_names]
+```
+
+- Some rows have NAs
+```{r}
+covid_deaths[rowSums(is.na(covid_deaths)) != 0, ]
+```
+
+- Others have empty strings ("") in the "continent" column
+```{r}
+covid_deaths[covid_deaths$continent == "",]
+```
+
+- Remove the NAs and empty strings from above, and assign to variable named "covid.deaths.noNA"
+```{r}
+# ToDo: Write your code here
+# removing NA
+covid_deaths_noNA <- covid_deaths[rowSums(is.na(covid_deaths)) == 0, ]
+# removing empty strings
+covid_deaths_noNA <- covid_deaths_noNA[covid_deaths_noNA$continent != "", ]
+```
+
+- Calculate the total deaths per million for each country
+- Add your results to a column named "total_deaths_per_million" in covid.deaths.noNA
+```{r}
+# ToDo: Write your code here
+covid_deaths_noNA$total_deaths_per_million <- (((10^6)*covid_deaths_noNA$total_deaths) / covid_deaths_noNA$population)
+```
+
+- Calculate the mean and median for total_deaths_per_million for each continent
+```{r}
+# ToDo: Write your code here
+aggregate(total_deaths_per_million ~ continent, data=covid_deaths_noNA, FUN=mean)
+aggregate(total_deaths_per_million ~ continent, data=covid_deaths_noNA, FUN=median)
+
+```
+
+## Task 2 - Inferential Statistics
+
+- Take a look at this boxplot
+```{r}
+ggplot(covid_deaths_noNA, aes(x=continent, y=total_deaths_per_million)) +
+  geom_boxplot(aes(fill=continent)) +
+  scale_y_continuous(breaks = seq(0,6000,1000)) +
+  labs(x="", y="Total Deaths (per million)") +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust=1))
+```
+
+- You have been asked to check the hypothesis that mortality rate from COVID-19 in African countries is different than in European countries
+- Take a look at the distribution of "total_deaths_per_million" for European countries, can you say that it is normal (by visual inspection)?
+```{r}
+hist(covid_deaths_noNA[covid_deaths_noNA$continent == "Europe",]$total_deaths_per_million, breaks = 10)
+```
+
+- How about African countries?
+```{r}
+hist(covid_deaths_noNA[covid_deaths_noNA$continent == "Africa",]$total_deaths_per_million, breaks = 10)
+```
+
+- We need test the normality of our data in order to choose the right statistical test
+- We can use the "Shapiro-Wilk normality test" to evaluate normality
+- The null hypothesis of the "Shapiro-Wilk normality test" state that the distribution is normal
+- The alternative hypothesis state that it is not
+```{r}
+shapiro.test(covid_deaths_noNA[covid_deaths_noNA$continent == "Europe",]$total_deaths_per_million)
+shapiro.test(covid_deaths_noNA[covid_deaths_noNA$continent == "Africa",]$total_deaths_per_million)
+```
+
+- Can we assume that the distribution of our data is normal?
+```{}
+Write your answer here: 
+The null hypothesis states that the distribution is normal.
+For Europe: p-value >> 0.005, thus we accept the null hypothesis, therefore the distribution is normal.
+For Africa: p-value << 0.005, thus we reject the null hypothesis, therefore the distribution isnt normal.
+```
+
+- Mann-Whitney test is a non-parametric statistical test of difference between the mean. Non-parametric means that it does not assume that data comes from any distribution. Look at the documentation for Mann-Whitney test in R (?wilcox.test) and write a code that test whether there is difference in mortality between Europe and Africa.
+```{r}
+# ToDo: Write your code here
+Europe_data <- covid_deaths_noNA[covid_deaths_noNA$continent == "Europe",]$total_deaths_per_million
+Africa_data <- covid_deaths_noNA[covid_deaths_noNA$continent == "Africa",]$total_deaths_per_million
+wilcox.test(Europe_data, Africa_data, paired = FALSE)
+```
+
+- What is the p-value? Is it significant? Write your conclusions from the statistical test results.
+```{}
+Write your answer here: 
+The p-value is 3.484e-14, much smaller than 5% (0.005).
+Thus we reject the null hypothesis which states that the means are equal.
+
+```
+
+- You read on the internet a claim that the high level of development in the country increases the risk to die from COVID-19
+- The blog shows this plot as evidence:
+```{r}
+death.vs.hdi <- covid_world_data[covid_world_data$date == "2021-11-01",
+                                 c("location", "continent", "total_deaths_per_million", "human_development_index")]
+death.vs.hdi.noNA <- death.vs.hdi[rowSums(is.na(death.vs.hdi)) == 0, ]
+death.vs.hdi.noNA <- death.vs.hdi.noNA[death.vs.hdi.noNA$continent != "",]
+ggplot(death.vs.hdi.noNA, aes(x=human_development_index, y=total_deaths_per_million)) +
+  geom_point(aes(col=continent), size=2) +
+  scale_y_continuous(breaks = seq(0,6000,1000)) +
+  scale_x_continuous(breaks = seq(0.4,1,0.1)) +
+  labs(x="Human Development Index", y="Deaths (per million)", title="", col="") +
+  theme_bw()
+```
+
+- Use the "cor()" function to find the Pearson correlation coefficient between "total_deaths_per_million" and "human_development_index"
+- Use the dataframe "death.vs.hdi.noNA" from the code above
+```{r}
+?cor
+# ToDo: Write your code here
+hdi <- death.vs.hdi.noNA$human_development_index
+dpm <- death.vs.hdi.noNA$total_deaths_per_million
+cor(hdi, dpm)
+```
+
+- Report the Pearson correlation coefficient, the strength of the correlation (low/moderate/strong/perfect) and the direction  (negative/positive)
+```{}
+Write your answer here: 
+The correlation is 0.5014556 which is positive moderate. 
+```
+
+- Do you agree with the claim that increased human development index causes increase in COVID-19 mortality (write in detail)?
+```{}
+Write your answer here: 
+I disagree with the claim. Correlation does not prove causality. 
+Which means, we can have a correlation betweent 2 different observations without having a cause-effect relation between the 2.
+furthermore it also does not claim to show which factor is the cause and which the result, and therefore you could come to the equally absurd claim that a high covid-19 mortality rate causes an increase in the HDI of a country.
+```
+
+- - Find an alternative explanation for the result (Bonus)
+```{}
+Write your answer here: 
+In this case, better explanations might be:
+1. low rates of testing in low HDI countries.
+2. a diffrence between populations and infrastructure in different HDI ranked countries (such as age, law enforcement, health system etc..).
+```
+
+
+## Task 3 - Sequence Alignment
+
+- Take a look at the "Biostrings" package vignettes
+```{r}
+browseVignettes("Biostrings")
+```
+
+- Download the file "covid_spike_variants.fasta" from the course website
+- This file contain the amino acids sequence of COVID19 spike protein from different variants
+- Read the file using the correct function from the package "Biostrings" and assign to a variable called "variants"
+```{r}
+# ToDo: Write your code here
+variants <- readAAStringSet("C:/Users/murad/Desktop/courses/22_A_winter/Bioinfornatics/hw1/covid_spike_variants.fasta")
+ variants
+```
+
+- Print the 19th amino acid of the Delta variant?
+```{r}
+# ToDo: Write your code here
+print(variants$Delta_India_Dec20[19])
+```
+
+- Write a for-loop that goes over each sequence in "variants"
+- Calculate the alignment score for the sequence "VNLRTRT"
+- Use the Smith-Waterman local alignment function from the Biostrings package
+- Save your results in a vector called "alignment.out"
+```{r}
+alignment.out <- c() # initiate an empty vector
+# ToDo: Write your for loop here
+for (i in 1:6)
+{
+  alignment.out[i] <- score(pairwiseAlignment("VNLRTRT", variants[i], type = "local"))
+}
+```
+
+- Look at the results
+```{r}
+alignment.out
+```
+
+- Which variant has the highest score for the alignment?
+```{}
+Write your answer here: 
+The 5th Variant, Delta.
+```
+
+- Read the documentation for the Multiple Sequence Alignment (msa) function from the package "msa"
+```{r}
+?msa()
+```
+
+- Run MSA for the sequences in "variants" and assign the results to "variants.msa"
+```{r}
+# ToDo: Write your code here
+
+variants.msa <- msa(variants)
+```
+
+- Take a look at the results using the package "msaR"
+- Notice: you can scroll right and left to see all the sequence
+```{r}
+msaR(AAMultipleAlignment(variants.msa), colorscheme = "taylor")
+```
+
+- Let's make a phylogenetic tree for the COVID19 variants
+- Install the packages "seqinr" and "ape" and run this code
+```{r}
+library(seqinr, quietly = T)
+library(ape, quietly = T)
+variants.seqinr <- msaConvert(variants.msa, type="seqinr::alignment")
+variants.seqinr.dist <- dist.alignment(variants.seqinr, "identity")
+varTree <- nj(variants.seqinr.dist)
+plot(varTree, main="Phylogenetic Tree of COVID19 Variants")
+```
+
+- The package "seqinr" use the results from the MSA to build a distance matrix
+- The package "ape" use the "neighbor-joining" (nj) algorithm to construct the tree
+
+
+- Look at the phylogenetic tree and answer the following questions:
+- (1) Which variant is the most closely relate to the Delta variant?
+- (2) Which variants seems to have emerged from the alpha UK variant?
+```{}
+Write your answer here:
+1) Epsilon
+2) Gamma and Beta
+```

@@ -1,0 +1,222 @@
+---
+title: "Homework - 3"
+students: "Murad Ektilat, 206064230. Noam Wolf, 326881240"
+date: "12/23/2021"
+output: html_document
+---
+
+In this homework assignment, we will analyze genotyping data of 9 dog breeds.
+Go to the study "The Shepherds’ Tale: A Genome-Wide Study across 9 Dog Breeds Implicates Two Loci in the Regulation of Fructosamine Serum Concentration in Belgian Shepherds" by Forsberg et al - https://doi.org/10.1371/journal.pone.0123173
+
+- Read the abstract, introduction, discussion and the GWAS results section
+- Answer the following questions in brief:
+(1) What is Fructosamine? and what disease is it associated with?
+(2) Which dog breeds are at low risk of developing this disease?
+(3) What do the authors aim to find in this study?
+(4) Why are domestic dogs useful models for genetic studies of human complex diseases?
+(5) Name the SNP ID that shows significant association on chromosome 3 with fructosamine concentrations.
+
+```{}
+1. Fructosamine is a major biomarker of glycaemia, where serum concentrations reflect glucose turnover over the past few weeks to months. It is formed in a non-enzymatic, irreversible reaction between glucose and free amino groups on serum proteins. The test checks the fraction of glycated serum proteins in the blood to determine average blood sugar levels. it is a test commonly used in non-human diabetes patient.
+
+2. Shepherd breeds (German and Belgian) and Golden retrievers are at low risk of developing the disease.
+
+3. In this study, the authors aim to find genetic factors influencing variation in serum fructosamine concentration in healthy dogs.
+
+4. Domestic dogs are useful models for genetic studies of human complex diseases for two reasons:
+a. They have been accompanying humans for several thousand years, share numerous common and complex diseases and have shared the same environment for many generations.
+b. During the breed-formation process, genetic variation within breeds became limited, leading to enrichment of some risk alleles and, as a consequence of this, to elevated rates of specific diseases.
+
+5. the SNP that shows significant association on chromosome 3 with fructosamine concentrations is FructoCFA3 and its ID is BICF2S2344808.
+```
+
+- Load packages
+```{r}
+# install.packages("statgenGWAS")
+library("dplyr")
+library(statgenGWAS)
+library(factoextra)
+library(ggplot2)
+```
+
+- Set working directory
+```{r}
+setwd('C:/Users/murad/Desktop/courses/22_A_winter/Bioinfornatics/hw3')
+```
+
+- Load data and take a look
+```{r}
+geno <- read.table("dogs.geno") # SNPs matrix of samples from nine different dog breeds
+map <- read.table("dogs.map") # Map table with the SNPs ID, chromosome and position
+pheno <- read.table("dogs.pheno", header = T) # Phenotypic and metadata for each dog sample (genotype)
+View(geno)
+View(map)
+View(pheno)
+```
+
+# Part 1: Bobby and population genetics -----
+
+Last month you adopted a 2.5 years old mixed-breed dog named Bobby.
+He is very cute, friendly and quite big (weighs 30kg).
+Therefore, you are pretty confident he is a mix of big dog breeds.
+
+To find out what dog breed Bobby most likely related to, you did what any reasonable person would do - asked your friend from the faculty of biology to genotype a sample of Bobby.
+
+For part 1, we would like to analyze only "big dogs" (over 20kg) as candidates for their relation to Bobby.
+
+- Use the data in `pheno` to make a variable called `candidate_breeds` that holds a vector of dog breed names
+(1) Make a boxplot of dogs breeds vs. weight *
+(2) Based on the boxplot, use only dog breeds that reach 20kg and/or higher as candidates
+* Color, order, use axis labels and remove NAs (pretty graphs get extra points!)
+Check this website for examples - https://www.r-graph-gallery.com/
+```{r}
+candidate_breeds <- pheno$Breed
+candidate_breeds <- candidate_breeds[!duplicated(candidate_breeds)]
+
+pheno_noNA <- na.omit(pheno, cols = Body_weight)
+ggplot(pheno_noNA, aes(x=as.factor(pheno_noNA$Breed), y=Body_weight, fill=pheno_noNA$Breed)) +
+geom_boxplot( alpha=0.8 ) +
+xlab("Breed") + ylab("Weight (kg)") +
+theme(legend.position="none") +
+theme(axis.text.x = element_text(angle=45, vjust=0.5))
+```
+
+- Think of a computational method that we learned in class that will help you visualize and decide what dog breed Bobby is most likely related to.
+(1) Use only data from `geno` that belongs to `candidate_breeds`
+(2) Load Bobby's genotyping results file: `bobby.geno`
+(3) Do not forget to plot (pretty graphs get extra points here as well!)
+TIP: use one of `factoextra` functions for the visualization and color the different dogs breeds
+```{r}
+geno_big_dogs <- geno
+geno_big_dogs$Breed <- pheno$Breed
+geno_big_dogs <- geno_big_dogs[geno_big_dogs$Breed!="Cavalier King Charles Spaniel" & geno_big_dogs$Breed!="Dachshund",]
+geno_big_dogs <- subset(geno_big_dogs, select = -c(Breed))
+pheno_big_dogs <- pheno[pheno$Breed !="Cavalier King Charles Spaniel" & pheno$Breed !="Dachshund",]
+
+geno_w_bobby <- rbind(geno_big_dogs, bobbys_geno)
+bobbys_pheno = list( "israel", "Bobby", "2.5", "1", "30", "" )
+pheno_w_bobby <- rbind(pheno_big_dogs, bobbys_pheno)
+pheno_w_bobby
+pca_with_bobby <- prcomp(geno_w_bobby)
+fviz_pca_ind(pca_with_bobby,
+col.ind = factor(pheno_w_bobby$Breed),
+geom = "point",
+col.ind.sup = c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", "#A6761D", "#027cd9", "#d9cb02" , "#000000"))
+
+```
+
+- Answer the following questions:
+(1) Which dog breed is the most similar to Bobby?
+(2) Look at the clusters of Labrador, Belgian and German Shepherd.
+Assume that the euclidean distance between the centroids of Belgian Shepherd and Labrador equals those of Belgian Shepherd and German Shepherd. Is it true to say that the similarity between Belgian Shepherd to German Shepherd and Labrador also equals? Explain.
+```{}
+1. Bobby is most similar to the Labrador Retriver breed.
+
+2. No. Each point on the PCA graph represent the variance between a sample and the axes (in our graph: dim1 & dim2). The Euclidian distance represent the magnitude of this variance, ignoring the axis "creating" it. This means the distance between 2 dots could be equal to the distance between two other dots, yet each couple might have different differences & similarities.
+In this case, we can see that Belgian & German sheperds differ more compared to the x axis, while the Belgian&Labradore differ more compared to the y axis. In addition the x axis accounts for 16.7 percent of the variance, while the y axis accounts for only 7.6 percent. although the euclidean distance is the same, belgian shepards are much closer to german shepards along the x axis than to labrador retrievers. and therefor more similar to them.
+
+```
+
+
+# Part 2: GWAS -----
+
+- Make sure geno, map and pheno left unchanged.
+```{r}
+geno <- read.table("dogs.geno")
+map <- read.table("dogs.map")
+pheno <- read.table("dogs.pheno", header = T)
+```
+
+- Create a gData object and call it `gDataDogs`:
+(1) Make sure that your data match the instructions in `?createGData()`
+(2) Make a list called `dogsPhenoList` of different dog breeds out of `pheno` and use only the columns `genotype` and `FRUCTO`
+```{r}
+pheno <- read.table("dogs.pheno", header = T)
+
+# preparing map
+colnames(map)[1:3] <- c("SNP.names", "chr", "pos")
+rownames(map) <- map[["SNP.names"]]
+
+# preparing phenotype
+pheno <- tibble::rownames_to_column(pheno, var = "genotype")
+dogsPhenoList <- split(x = pheno[c("genotype", "FRUCTO")], f = pheno[["Breed"]])
+
+gDataDogs <- createGData(geno = geno, map = map, pheno = dogsPhenoList)
+
+# summary(gDataDogs, trials = "Belgian Shepherd")
+# summary(gDataDogs, trials = "German Shepherd")
+
+```
+
+- Run a GWAS analysis for Belgian Shepherd and German Shepherd on fructosamine concentrations:
+(1) Show the Manhattan and QQ-plots
+(2) Print significant SNP(s)
+(3) Save the results in `GWAS.BS` and `GWAS.GS` for Belgian and German Shepherd respectively
+```{r}
+# removing duplicate SNP's
+gDataDogsNoDup <- codeMarkers(gDataDogs, removeDuplicates = TRUE, impute = FALSE, verbose = TRUE)
+
+# summary(gDataDogs, trials = "Belgian Shepherd")
+# summary(gDataDogs, trials = "German Shepherd")
+
+GWAS.BS <- runSingleTraitGwas(gData = gDataDogsNoDup, trials = "Belgian Shepherd",
+                             traits = c("FRUCTO"))
+GWAS.GS <- runSingleTraitGwas(gData = gDataDogsNoDup, trials = "German Shepherd",
+                              traits = c("FRUCTO"))
+
+print(GWAS.BS$signSnp$`Belgian Shepherd`, row.names = FALSE)
+print(GWAS.GS$signSnp$`German Shepherd`, row.names = FALSE)
+
+plot(GWAS.BS, plotType = "qq", trait = "FRUCTO")
+plot(GWAS.GS, plotType = "qq", trait = "FRUCTO")
+
+plot(GWAS.BS, plotType = "manhattan", trait = "FRUCTO")
+plot(GWAS.GS, plotType = "manhattan", trait = "FRUCTO")
+```
+
+- Make a boxplot of Fructosamine concentrations for the different alleles in Belgian and German Shepherds:
+(1) Use only the genotypes of Belgian and German Shepherd
+(2) The X-axis should be the different alleles (0, 1, and 2) of the most significant SNP from the Belgian Shepherd GWAS results in the previous question
+(3) Remove rows with NAs in fructosamine concentrations
+```{r}
+geno <- read.table("dogs.geno")
+pheno <- read.table("dogs.pheno", header = T)
+
+pheno_with_SNP <- pheno
+pheno_with_SNP$signSNP <- geno$BICF2S2344808
+
+# removing NA, there are no NAs..
+pheno_with_SNP <- na.omit(pheno_with_SNP, cols = FRUCTO)
+  
+pheno_BS_GS <- pheno_with_SNP[pheno_with_SNP$Breed == "Belgian Shepherd" | pheno_with_SNP$Breed == "German Shepherd",]
+comparison_by <- na.omit(pheno_BS_GS, cols = FRUCTO)
+
+ggplot(comparison_by, aes(x=as.factor(comparison_by$signSNP), y=FRUCTO, fill=comparison_by$Breed)) + 
+    geom_boxplot( alpha=0.8 ) + 
+    xlab("alleles") +  ylab("fructosamine concentrations") +
+  theme(axis.text.x  = element_text(vjust=0.5)) + geom_boxplot()
+
+```
+
+- Answer the following questions:
+(1) Name the most significant SNP, indicates the chromosome and positions.
+(2) Why couldn't we detect this SNP in German Shepherds? (use the results from the boxplot in your answer).
+(3) What gene does this SNP occur in? What is the "rs" ID of this SNP on the map? *
+  Go to - "http://genome-euro.ucsc.edu/cgi-bin/hgGateway".
+  Select "Dog" from the list of species on the left.
+  Select dog assembly: "May 2005 (Broad/canFam2)".
+  Select and use the chromosome and position of the SNP from the first question and click "GO".
+  Zoom out (x100) - in the top right.
+
+* The first part of this video can be useful to answer question 3: https://www.youtube.com/watch?v=8U5NhHofPI0
+```{}
+# Write your answers here:
+
+1) BICF2S2344808 chr3:65209415 
+
+2) we couldnt detect this SNP in GS because GS are almost entirely homozygotic, and therefor only contain one variant of the SNP. In order to understand if a specific genotype has an affect on a certain trait, there most be another genotype to compare it to. As almost all GS are of teh same genotype, there was no information to compare it to.
+
+3) gene: SLBP. rs23514694
+
+```
+
